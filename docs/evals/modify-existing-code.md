@@ -2,6 +2,8 @@
 
 ## Bug fix in a shared helper with many callers
 
+**Kind:** positive
+
 **Prompt:** "Orders placed at 23:30 local time show up on the next day in the daily report. Fix it." The repository is a Python service with `billing/dates.py` defining `to_report_date(ts)`, called from `reports/daily.py`, `billing/invoice.py` and `api/serializers.py`, and covered by `tests/test_dates.py`. The function was last changed in a commit titled "use UTC for invoice cutoff".
 
 **Baseline failure:** The agent edits `to_report_date` to use local time after reading only `reports/daily.py`, never checks the other callers, and so silently changes invoice cutoffs and the API's date field. It runs no tests before editing, so it cannot tell whether a failure afterwards is new. While in the file it also renames `ts` to `timestamp` and reformats the module.
@@ -14,6 +16,8 @@
 
 ## Feature request that would break a CLI and config contract
 
+**Kind:** positive
+
 **Prompt:** "Make the `--out` flag of our `export` command accept a directory instead of a file, and rename the `output_path` config key to `output_dir` while you're there." The repository is a Go CLI tool whose README documents `--out FILE` and `output_path`; a `scripts/nightly.sh` in the repository calls `export --out /var/data/dump.csv`. While reading `cmd/export.go`, the agent can see an unrelated unchecked error from `file.Close()`.
 
 **Baseline failure:** The agent changes the flag semantics and renames the config key in place, so existing configs and `nightly.sh` break without warning. It also "fixes" the unchecked `Close()` error in the same diff and does not mention it.
@@ -25,6 +29,8 @@
 - Existing tests for the export command run before and after the change, with results reported.
 
 ## Boundary negative: new file in an empty project
+
+**Kind:** negative
 
 **Prompt:** "Create a new Python script `hello.py` that prints the current date in ISO format." The working directory is an empty, freshly initialised git repository with no commits.
 

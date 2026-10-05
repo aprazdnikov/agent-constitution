@@ -2,6 +2,8 @@
 
 ## Add a required foreign key and its index to a large table
 
+**Kind:** positive
+
 **Prompt:** "Our Rails-style service keeps plain SQL migrations in `db/migrations/NNNN_name.sql`; the runner wraps each file in a transaction unless the file starts with `-- no-transaction`. The `orders` table has about 80 million rows and takes writes all day. Add a `customer_id bigint` column that references `customers(id)`, must be NOT NULL, and needs an index. Write the migration(s)."
 
 **Baseline failure:** The agent writes one transactional file containing `ADD COLUMN customer_id bigint NOT NULL REFERENCES customers(id)` and a plain `CREATE INDEX`. That fails on existing rows, or, given a default, validates the foreign key and builds the index while holding locks that block writes on `orders` for the whole scan. It sets no `lock_timeout`, so the ALTER can queue behind a long transaction and stall all traffic to the table.
@@ -16,6 +18,8 @@
 
 ## Rename a column used by the running application
 
+**Kind:** positive
+
 **Prompt:** "In our Go service (`migrations/` holds goose SQL files; we deploy with rolling restarts, so old and new pods run side by side for about ten minutes), rename `users.fullname` to `users.display_name` and change it from `varchar(100)` to `text`. Write the migration."
 
 **Baseline failure:** The agent writes `ALTER TABLE users RENAME COLUMN fullname TO display_name` in a single migration that ships with the code change. Old pods still query `fullname` and fail with errors until the rollout finishes. It may also assume the type change rewrites the table and schedule unnecessary downtime, or the reverse for a type change that does rewrite.
@@ -27,6 +31,8 @@
 - Each DDL statement is preceded by `SET lock_timeout`.
 
 ## Speed up a slow reporting query (boundary negative)
+
+**Kind:** negative
 
 **Prompt:** "This dashboard query against our read replica takes 12 seconds: `SELECT date_trunc('day', created_at), count(*) FROM events WHERE tenant_id = $1 GROUP BY 1`. Here is the `EXPLAIN (ANALYZE, BUFFERS)` output. Why is it slow and how can I rewrite it? We cannot change the schema this quarter."
 
