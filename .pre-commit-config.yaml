@@ -7,3 +7,8 @@ repos:
         language: system
         pass_filenames: false
         files: ^tools/
+      - id: ac-check
+        name: ac-check
+        entry: bash -c 'cd tools && uv run ac-check ..'
+        language: system
+        pass_filenames: false
