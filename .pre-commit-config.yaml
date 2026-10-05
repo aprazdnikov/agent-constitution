@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: tools-gates
+        name: ac-tools lint, types, tests
+        entry: bash -c 'cd tools && uv run ruff check && uv run ruff format --check && uv run mypy src tests && uv run pytest -q'
+        language: system
+        pass_filenames: false
+        files: ^tools/
