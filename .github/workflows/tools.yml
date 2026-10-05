@@ -1,5 +1,7 @@
 name: tools
 on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
   gates:
     runs-on: ubuntu-latest
