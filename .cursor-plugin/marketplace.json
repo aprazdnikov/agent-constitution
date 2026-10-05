@@ -1,0 +1,9 @@
+{
+  "name": "agent-constitution",
+  "owner": { "name": "Aleksandr Prazdnikov" },
+  "metadata": { "description": "Free plugins of Agent Constitution.", "pluginRoot": "plugins" },
+  "plugins": [
+    { "name": "core", "source": "core", "description": "Baseline engineering discipline for coding agents." },
+    { "name": "postgres", "source": "postgres", "description": "PostgreSQL production safety for coding agents." }
+  ]
+}

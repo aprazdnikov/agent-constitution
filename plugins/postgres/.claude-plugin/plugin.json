@@ -1,0 +1,6 @@
+{
+  "name": "postgres",
+  "version": "0.1.0",
+  "description": "PostgreSQL production safety for coding agents: lock-aware migrations and PgBouncer transaction-pooling constraints.",
+  "author": { "name": "Aleksandr Prazdnikov" }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "agent-constitution",
+  "interface": { "displayName": "Agent Constitution" },
+  "plugins": [
+    {
+      "name": "core",
+      "source": { "source": "local", "path": "./plugins/core" },
+      "description": "Baseline engineering discipline for coding agents.",
+      "category": "Productivity",
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" }
+    },
+    {
+      "name": "postgres",
+      "source": { "source": "local", "path": "./plugins/postgres" },
+      "description": "PostgreSQL production safety for coding agents.",
+      "category": "Productivity",
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" }
+    }
+  ]
+}

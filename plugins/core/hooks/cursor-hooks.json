@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "command": "sh ./hooks/session-start.sh cursor", "timeout": 30 }
+    ]
+  }
+}
