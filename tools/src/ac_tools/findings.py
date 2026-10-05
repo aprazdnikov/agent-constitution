@@ -11,6 +11,7 @@ class Check(StrEnum):
     STOPLIST = "stoplist"
     OVERLAP = "overlap"
     ENCODING = "encoding"
+    HOOKS = "hooks"
 
 
 @dataclass(frozen=True, slots=True)

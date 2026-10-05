@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import NoReturn
 
 from ac_tools.findings import Finding
+from ac_tools.hooks import check_hooks
 from ac_tools.layout import PLUGINS, load_texts, scanned_files
 from ac_tools.manifests import check_manifests
 from ac_tools.marketplaces import check_marketplaces
@@ -90,6 +91,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         findings += [
             *check_manifests(repo),
             *check_marketplaces(repo),
+            *check_hooks(repo),
             *check_skills(repo, texts),
             *check_placeholders(texts),
             *_provenance(texts, repo),

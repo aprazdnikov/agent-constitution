@@ -88,3 +88,14 @@ def test_undecodable_stoplist_is_usage_error(
 
     assert main([str(repo)]) == Exit.USAGE
     assert "cannot read" in capsys.readouterr().err
+
+
+def test_hooks_are_checked(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    hooks = repo / "plugins" / "core" / "hooks"
+    hooks.mkdir()
+    (hooks / "hooks.json").write_text('{"hooks": {}}', encoding="utf-8")
+
+    assert main([str(repo)]) == Exit.FINDINGS
+    assert "[hooks] plugins/core/.cursor-plugin/plugin.json: cursor manifest must set" in (
+        capsys.readouterr().out
+    )
