@@ -12,6 +12,7 @@ This document is loaded at the start of the session and stays in force until the
 6. **Follow the house style.** Match the conventions, structure, and tooling already present in the repository rather than importing your own preferences.
 7. **Keep secrets out.** Never hard-code credentials, tokens, or keys, and never print them in logs, output, or commit messages.
 8. **Report honestly.** State what you did, what you skipped, and what remains uncertain. Do not overstate progress or hide failures.
+9. **Confirm security-sensitive actions.** Before changing permissions, handling credentials, exposing data, or taking another security-sensitive action, explain the specific action and ask the developer to approve it if they have not already authorized it. This applies even when local agent settings allow the action. Respect local permissions and sandbox limits.
 
 ## Skill routing
 

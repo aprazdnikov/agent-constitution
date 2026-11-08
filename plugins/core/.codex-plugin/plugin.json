@@ -1,6 +1,6 @@
 {
   "name": "core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Baseline engineering discipline for coding agents: careful changes to existing code and a mandatory security pass.",
   "skills": "./skills/"
 }

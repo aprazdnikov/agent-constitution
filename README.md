@@ -1,36 +1,61 @@
-# Agent Constitution
+# agent-constitution
 
-Production rules and skills for coding agents — Claude Code, Codex and Cursor — packaged as plugins.
-Install them once and every session starts with the same engineering discipline instead of each developer prompting the agent their own way.
+Методология и плагины для команд, которые используют AI-агентов при разработке. Цель — получать код и документацию, соответствующие стандартам конкретного проекта, с понятным ходом работы и контролем разработчика.
 
-## Plugins
+Открытая часть содержит базовые инженерные правила и навыки для работы с существующим кодом и PostgreSQL. Проект не привязан к единому стилю: договорённости команды и архитектура её проекта определяют применимые стандарты.
 
-| Plugin | What it adds |
+## Что входит
+
+| Плагин | Возможности |
 |---|---|
-| `core` | A short constitution injected at session start, plus the skills `modify-existing-code` (careful changes to code the agent did not write) and `security-gate` (a security pass on every programming task) |
-| `postgres` | The skills `postgres-migrations` (lock-aware schema changes) and `postgres-pgbouncer` (what breaks behind transaction pooling) |
+| `core` | Краткая конституция для новой сессии; `modify-existing-code` помогает изучить контракты и проверить влияние изменений; `security-gate` проверяет риски безопасности. |
+| `postgres` | `postgres-migrations` помогает готовить миграции с учётом блокировок; `postgres-pgbouncer` — работать с ограничениями пулов соединений. |
 
-Install `core` first; `postgres` is optional. See [docs/install.md](docs/install.md).
+Установите `core` первым; `postgres` нужен для задач с PostgreSQL. До действий, затрагивающих безопасность, агент должен объяснить конкретное действие и запросить согласие, если оно ещё не было дано. Локальные разрешения и ограничения среды продолжают действовать.
 
-## Repository layout
+## Быстрый старт: Codex
 
-```
-.claude-plugin/marketplace.json     Claude Code marketplace
-.cursor-plugin/marketplace.json     Cursor marketplace
-.agents/plugins/marketplace.json    Codex marketplace
-plugins/<name>/                     one plugin: three agent manifests, skills/, hooks/
-docs/evals/                         evaluation scenarios for every skill
-tools/                              ac-check, the repository validator
-```
-
-## Validation
-
-`ac-check` keeps the three agent formats in sync: manifest versions and descriptions, marketplace entries, hook configs, skill frontmatter, and leftover placeholders.
+Требуются Git, установленный Codex CLI и POSIX-совместимый `sh` для стартового хука.
 
 ```bash
-cd tools && uv sync && uv run ac-check ..
+git clone https://github.com/aprazdnikov/agent-constitution.git
+codex plugin marketplace add ./agent-constitution
+codex plugin add core@agent-constitution
 ```
 
-## Paid plugins
+Для задач с PostgreSQL дополнительно:
 
-Language rules (Python, Rust, Go, TypeScript, Java) and `codify` — a skill that derives house rules from a team's own repository with verified evidence — are coming soon.
+```bash
+codex plugin add postgres@agent-constitution
+```
+
+Начните новую сессию и, если Codex запросит доверие к хуку, изучите его перед подтверждением. Инструкции для Claude Code и Cursor, установка из локальной копии и проверка загрузки приведены в [руководстве по установке](docs/install.md).
+
+## Проектные знания и Pro
+
+Отдельный закрытый проект `agent-constitution-pro` содержит `codify`: навык для создания базы знаний по коду, документации и ответам ответственного. Базу и проектный плагин можно хранить внутри репозитория проекта или в отдельном Git-репозитории; несколько сервисов одного бизнес-проекта могут использовать общую базу. Ответственный проверяет предлагаемые правила, а обновления инициирует команда.
+
+`codify` и его интеграции находятся в развитии. Языковые плагины Python, Rust, Go, TypeScript и Java запланированы, но пока не входят в Pro.
+
+## Поддержка и ограничения
+
+- В этом репозитории подготовлены форматы плагинов для Codex, Claude Code и Cursor. Hermes, Qwen Code и OpenCode входят в целевую область, но полноценная интеграция бесплатных плагинов с ними ещё не подтверждена.
+- Хук `core` требует POSIX-совместимый `sh`; работа хука на Windows пока не поддерживается. Cursor cloud agents не запускают этот стартовый хук.
+- Правила и навыки направляют агента, но не заменяют ревью, ограничения доступа или настройки песочницы. Содержание, передаваемое облачной модели, может покидать окружение команды.
+- Скорость и расход токенов — цели продукта; достоверного сравнительного замера с продуктом и без него пока нет.
+
+## Разработка и проверка
+
+Для проверок нужны Python 3.13+, `uv` и Git:
+
+```bash
+cd tools
+uv sync --locked
+uv run ruff check
+uv run ruff format --check
+uv run mypy src tests
+uv run pytest -q
+uv run ac-check ..
+```
+
+`ac-check` проверяет манифесты, маркетплейсы, хуки, навыки и происхождение материалов, когда соответствующие локальные источники доступны. Поведенческие сценарии находятся в [docs/evals](docs/evals), а проверка подтверждения действий безопасности проводится [вручную](docs/manual/security-confirmation.md).
