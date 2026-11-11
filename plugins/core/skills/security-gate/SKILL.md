@@ -32,33 +32,18 @@ Do not pad the section with generic advice that is not tied to the change.
 
 ### Bind parameters; never build queries from input (CWE-89)
 
-❌
-```python
-cur.execute(f"SELECT * FROM reports WHERE owner_id = {owner}")
-```
-✅
 ```python
 cur.execute("SELECT * FROM reports WHERE owner_id = ?", (owner,))
 ```
 
 ### Pass argument lists; never hand input to a shell (CWE-78)
 
-❌
-```python
-subprocess.run(f"convert {name} out.png", shell=True)
-```
-✅
 ```python
 subprocess.run(["convert", "--", name, "out.png"], check=True)
 ```
 
 ### Check ownership of every object fetched by ID (CWE-639)
 
-❌
-```python
-report = Report.get(request.args["id"])
-```
-✅
 ```python
 report = Report.get(id=request.args["id"], owner_id=current_user.id)
 if report is None:
@@ -67,11 +52,6 @@ if report is None:
 
 ### Keep resolved paths inside the base directory (CWE-22)
 
-❌
-```python
-return send_file(os.path.join(REPORTS_DIR, name))
-```
-✅
 ```python
 base = Path(REPORTS_DIR).resolve()
 path = (base / name).resolve()
@@ -79,15 +59,10 @@ if not path.is_relative_to(base):
     abort(404)
 return send_file(path)
 ```
+If an attacker can change directory entries concurrently, use descriptor-relative file access that prevents symlink traversal; a path check alone does not prevent a race.
 
 ### Read secrets from the environment and keep them out of logs (CWE-798, CWE-532)
 
-❌
-```python
-API_KEY = "sk_live_51H..."
-log.info("sent %s", request.headers)
-```
-✅
 ```python
 API_KEY = os.environ["API_KEY"]
 log.info("sent status=%s id=%s", resp.status_code, request_id)
@@ -95,40 +70,18 @@ log.info("sent status=%s id=%s", resp.status_code, request_id)
 
 ### Allow-list outbound destinations (CWE-918)
 
-❌
-```python
-requests.post(tenant.webhook_url, json=payload)
-```
-✅
-```python
-url = urlsplit(tenant.webhook_url)
-if url.scheme != "https" or not host_is_public(url.hostname):
-    raise ValueError("webhook host not allowed")
-requests.post(url.geturl(), json=payload, timeout=5, allow_redirects=False)
-```
-`host_is_public` must resolve the name and reject loopback, private, link-local and metadata addresses.
+Require HTTPS and an approved hostname. Validate all resolved addresses as publicly routable, rejecting loopback, private, link-local and metadata addresses. Connect to a validated address while verifying TLS against the original hostname; disable redirects or validate each destination the same way. Enforce the same restrictions at network egress where possible.
 
 ### Parse untrusted data as plain data (CWE-502)
 
-❌
-```python
-job = pickle.loads(message.body)
-```
-✅
 ```python
 job = JobSchema.model_validate_json(message.body)
 ```
 
 ### Bound every input-driven cost (CWE-770, CWE-1333)
 
-❌
 ```python
-limit = int(request.args["limit"])
-re.match(r"^(\w+\s?)+$", text)
-```
-✅
-```python
-limit = min(int(request.args.get("limit", 50)), 200)
+limit = max(1, min(int(request.args.get("limit", 50)), 200))
 if len(text) > 1000:
     abort(413)
 re.fullmatch(r"[\w\s]+", text)
@@ -136,11 +89,6 @@ re.fullmatch(r"[\w\s]+", text)
 
 ### Keep verification on; scope exceptions explicitly (A04:2025, A02:2025)
 
-❌
-```python
-requests.post(url, json=payload, verify=False)
-```
-✅
 ```python
 requests.post(url, json=payload, verify=settings.CA_BUNDLE or True)
 ```

@@ -4,7 +4,7 @@ This repository is a plugin marketplace named `agent-constitution`. It ships two
 
 | Plugin | What it adds |
 | :- | :- |
-| `core` | A session-start hook that loads a short constitution into every new session, plus the skills `modify-existing-code` and `security-gate`. |
+| `core` | Hooks for session and subagent context, plus the skills `modify-existing-code` and `security-gate`. |
 | `postgres` | The skills `postgres-migrations` and `postgres-pgbouncer`. Optional. |
 
 Install `core` first. The constitution it injects is what routes the agent to every skill, including the
@@ -215,6 +215,14 @@ The session-start hook runs in the IDE only. Cursor cloud agents do not run `ses
 the constitution that routes to them.
 
 ## Limitations
+
+### Subagent context
+
+The `core` plugin is designed to supply the constitution and skill routing when a subagent starts. In Claude Code and Codex, `SubagentStart` returns the same context as `SessionStart`; Codex requires the new hook to be trusted. Local synthetic runs verified context delivery through this event with Codex CLI 0.166.0 and Claude Code 2.1.296, using a local model stub. The coordinator also receives instructions to pass relevant confirmed project context and constraints to subagents and review their work. A project plugin's own knowledge is not automatically copied by the `core` hook.
+
+Cursor's `subagentStart` cannot inject context. `hooks/cursor-subagent.py` is an experimental `preToolUse` handler for `Task`; it prepends the constitution to the task prompt and requires Python 3. It is **not registered or enabled by default**. Multiple hooks may rewrite the same original task and one update can replace another, potentially losing a restriction or redaction supplied by another hook. Cursor's response schema and permission behavior also need end-to-end verification: an invalid permission-hook response can block `Task`, while a hook error may let a task proceed without the context. Test delivery and permission behavior in an isolated Cursor installation, including interactions with every other `Task` hook, before opting in. The coordinator is instructed to include relevant constraints in delegated tasks. Hooks do not replace permissions or sandbox restrictions.
+
+Sources: [Codex hooks](https://learn.chatgpt.com/docs/hooks), [Claude Code hooks](https://code.claude.com/docs/en/hooks#subagentstart), [Cursor hooks](https://cursor.com/docs/hooks#pretooluse).
 
 - **Windows is not supported for the hook yet.** Every agent starts the hook as `sh .../session-start.sh`,
   so it needs a POSIX `sh` on `PATH`. The skills themselves have no such requirement.

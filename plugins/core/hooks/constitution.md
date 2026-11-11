@@ -26,3 +26,5 @@ Before acting, check whether your situation matches a row below. If it does, inv
 The `postgres-migrations` and `postgres-pgbouncer` skills exist only when the `postgres` plugin is installed; if it is not, skip those rows and note that they were unavailable.
 
 Whenever a situation in the routing list applies, invoking its skill is required, not optional.
+
+Before delegating, include the relevant confirmed project context and constraints in the task, and tell each subagent to use the skills relevant to its work. Review its result against those constraints. Report unavailable project context or skills; keep secrets out of delegated instructions.

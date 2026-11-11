@@ -44,51 +44,35 @@ Code you did not write has callers, tests and history you have not seen, and oth
 
 ### Find usages before editing
 
-✅ Before changing `to_report_date`, run `git grep -n -w to_report_date`, find callers in `reports/daily.py`, `billing/invoice.py` and `api/serializers.py`, and check how each one depends on the result.
-
-❌ Read only `reports/daily.py`, change `to_report_date`, and silently shift invoice cutoffs and an API field.
+Before changing `to_report_date`, run `git grep -n -w to_report_date`, find callers in `reports/daily.py`, `billing/invoice.py` and `api/serializers.py`, and check how each one depends on the result.
 
 ### Read history before reversing behavior
 
-✅ `git log -L :to_report_date:billing/dates.py` shows a commit "use UTC for invoice cutoff"; ask the user whether invoices should keep UTC, or scope the fix to the report path.
-
-❌ Treat the UTC conversion as a bug and remove it because it "looks wrong".
+`git log -L :to_report_date:billing/dates.py` shows a commit "use UTC for invoice cutoff"; ask the user whether invoices should keep UTC, or scope the fix to the report path.
 
 ### Record a baseline
 
-✅ Run `pytest tests/test_dates.py` before the edit (12 passed, 1 failing already), then after (13 passed), and report both.
-
-❌ Run tests only after the edit, see one failure, and either "fix" a failure that already existed or blame your change for it.
+Run `pytest tests/test_dates.py` before the edit (12 passed, 1 failing already), then after (13 passed), and report both.
 
 ### Stop on risky untested code
 
-✅ "`apply_discount` has no tests and is called from checkout. I propose adding a characterization test for current behavior first. Proceed?"
-
-❌ Rewrite `apply_discount` and rely on reading the code to be sure it still works.
+"`apply_discount` has no tests and is called from checkout. I propose adding a characterization test for current behavior first. Proceed?"
 
 ### Preserve contracts or announce the break
 
-✅ "Renaming `output_path` to `output_dir` breaks existing configs and `scripts/nightly.sh`. I suggest reading `output_path` as a deprecated alias with a warning. Should I do that?"
-
-❌ Rename the config key in place and let existing deployments fail at startup.
+"Renaming `output_path` to `output_dir` breaks existing configs and `scripts/nightly.sh`. I suggest reading `output_path` as a deprecated alias with a warning. Should I do that?"
 
 ### Keep the diff to the request
 
-✅ A one-line fix to the date conversion; the rest of the file is untouched.
-
-❌ The same fix plus renaming `ts` to `timestamp`, reformatting the module and reordering imports.
+A one-line fix to the date conversion; the rest of the file is untouched.
 
 ### Report out-of-scope problems
 
-✅ "Unrelated: `cmd/export.go:88` ignores the error from `file.Close()`. Not changed in this diff."
-
-❌ Quietly add error handling for `file.Close()` in the same commit without mentioning it.
+"Unrelated: `cmd/export.go:88` ignores the error from `file.Close()`. Not changed in this diff."
 
 ### Skip the workflow when there is no existing code
 
-✅ In an empty repository, asked to create `hello.py`, write the file and run it once.
-
-❌ Run `git grep`, `git log -L` and a baseline test run against a project that has no code yet.
+In an empty repository, asked to create `hello.py`, write the file and run it once.
 
 ## Sources
 

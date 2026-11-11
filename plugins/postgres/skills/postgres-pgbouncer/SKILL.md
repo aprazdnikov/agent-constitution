@@ -30,12 +30,6 @@ PgBouncer's feature table lists these as never working in transaction mode: `SET
 
 A plain `SET` (same as `SET SESSION`) persists for the rest of the server session once committed — on a pooled connection that means it can apply to a different client, and your next transaction may not see it. `SET LOCAL` lasts until the transaction ends, committed or not. Outside a transaction block `SET LOCAL` only emits a warning and does nothing, so open the transaction first. `set_config(name, value, true)` is the function form of `SET LOCAL`; `false` makes it session-wide.
 
-❌
-```sql
-SET statement_timeout = '5s';
-SELECT * FROM report_rows WHERE ...;   -- may run on another server connection
-```
-✅
 ```sql
 BEGIN;
 SET LOCAL statement_timeout = '5s';
@@ -50,16 +44,10 @@ Exception: PgBouncer tracks a fixed set of startup parameters (`client_encoding`
 
 A session-level advisory lock is held until explicitly unlocked or the session ends. Through a transaction pooler the unlock may hit a different server connection, so the lock leaks for as long as the server connection lives. `pg_advisory_xact_lock` / `pg_try_advisory_xact_lock` are released automatically at transaction end and cannot be released early — put all the protected work in that same transaction.
 
-❌
-```sql
-SELECT pg_advisory_lock(42);
--- ... job runs in several transactions ...
-SELECT pg_advisory_unlock(42);
-```
-✅
 ```sql
 BEGIN;
-SELECT pg_try_advisory_xact_lock(42);  -- false: another worker has it, ROLLBACK and exit
+SET LOCAL lock_timeout = '3s';
+SELECT pg_advisory_xact_lock(42);  -- wait only until lock_timeout, then fail
 -- ... all of the job's writes ...
 COMMIT;                                -- lock released here
 ```
@@ -69,19 +57,12 @@ If the work cannot fit in one transaction, use a direct connection for the lock 
 
 A listener registers on one server session; after the transaction ends PgBouncer may give that server to someone else and your client stops receiving notifications. `NOTIFY` itself works in transaction mode.
 
-❌ `pool.query("LISTEN cache_invalidate")` on the pooled connection.
-✅ A single long-lived client connected directly to Postgres (or through a session-mode pool) runs `LISTEN`; senders keep using the pool for `NOTIFY` or `pg_notify(...)`.
+A single long-lived client connected directly to Postgres (or through a session-mode pool) runs `LISTEN`; senders keep using the pool for `NOTIFY` or `pg_notify(...)`.
 
 ### 4. Cursors: `WITHOUT HOLD`, consumed in one transaction
 
 A `WITH HOLD` cursor outlives its transaction on the server session that created it; your next fetch may not reach that server.
 
-❌
-```sql
-DECLARE c CURSOR WITH HOLD FOR SELECT ...; COMMIT;
-FETCH 100 FROM c;
-```
-✅
 ```sql
 BEGIN;
 DECLARE c CURSOR FOR SELECT ...;
@@ -94,13 +75,6 @@ For batch processing across transactions, use keyset pagination (`WHERE id > $la
 
 Temp tables with the default `PRESERVE ROWS` or with `DELETE ROWS` stay on a server session that later belongs to another client, and the next transaction may not find them.
 
-❌
-```sql
-CREATE TEMP TABLE staging (LIKE orders);
-COPY staging FROM STDIN;      -- separate autocommit transactions
-INSERT INTO orders SELECT * FROM staging;
-```
-✅
 ```sql
 BEGIN;
 CREATE TEMP TABLE staging (LIKE orders) ON COMMIT DROP;
@@ -113,19 +87,13 @@ COMMIT;
 
 PgBouncer forwards SQL-level prepared statement commands straight to whichever server connection is current, so `EXECUTE` can land on a server connection where the statement was never prepared, or where another client prepared a different statement under the same name. `max_prepared_statements` does not cover them.
 
-❌
-```sql
-PREPARE find_user(int) AS SELECT * FROM users WHERE id = $1;
-EXECUTE find_user(7);
-```
-✅ Send a parameterized query through the driver (`SELECT * FROM users WHERE id = $1` with bound parameters), and let rule 8 decide whether the driver may prepare it at protocol level.
+Send a parameterized query through the driver (`SELECT * FROM users WHERE id = $1` with bound parameters), and let rule 8 decide whether the driver may prepare it at protocol level.
 
 ### 7. `LOAD`: not through the pooler
 
 `LOAD` affects only the server session that runs it.
 
-❌ `LOAD 'auto_explain';` from application code on a pooled connection.
-✅ Have the library loaded by server configuration (owned by the DBA or infrastructure), or run `LOAD` on a direct connection for a one-off debugging session.
+Have the library loaded by server configuration (owned by the DBA or infrastructure), or run `LOAD` on a direct connection for a one-off debugging session.
 
 ### 8. Driver prepared-statement caches: match the PgBouncer version
 
@@ -134,8 +102,7 @@ Many drivers prepare statements at the protocol level and cache them per connect
 - PgBouncer ≥ 1.21 with `max_prepared_statements > 0`: protocol-level prepared statements are safe; leave the driver's cache on.
 - Older PgBouncer, or the setting is `0` or unknown: disable or bypass the driver's server-side prepared statement cache. The option name differs by driver — **check your driver's documentation**; do not guess a flag name.
 
-❌ Assuming the driver default is safe without checking the PgBouncer version and `max_prepared_statements`.
-✅ "PgBouncer is 1.23 with `max_prepared_statements = 100` in `pgbouncer.ini`, so the driver's prepared statement cache stays enabled." Or: "Version unknown; I disabled the driver's server-side statement cache per its documentation — re-enable once `max_prepared_statements` is confirmed non-zero."
+"PgBouncer is 1.23 with `max_prepared_statements = 100` in `pgbouncer.ini`, so the driver's prepared statement cache stays enabled." Or: "Version unknown; I disabled the driver's server-side statement cache per its documentation — re-enable once `max_prepared_statements` is confirmed non-zero."
 
 Driver features that keep other session state (session-level `SET` on connect, connection "init" queries, session-scoped locks in migration tools) fall under rules 1–2: check the driver or tool documentation for what it runs on connect.
 

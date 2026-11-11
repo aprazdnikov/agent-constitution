@@ -21,11 +21,12 @@ Not in scope: tuning read-only queries, `EXPLAIN` analysis, or data changes with
 
 ## Rules
 
+The DDL examples below show the individual operations. Add the timeouts from rule 1 to each migration, and run operations described as separate steps in separate transactions or non-transactional files.
+
 ### 1. Bound every lock wait and every statement
 
-Set `lock_timeout` (a few seconds) and `statement_timeout` at the top of each migration with `SET LOCAL` inside a transaction, or `SET` in a non-transactional file. `lock_timeout` applies to each lock acquisition separately. On a timeout, the migration fails cleanly: retry it later with backoff, a bounded number of times. Never raise the timeout to make it pass. Do not set either in `postgresql.conf`, because that affects all sessions.
+Set `lock_timeout` (a few seconds) and `statement_timeout` at the top of each migration with `SET LOCAL` inside a transaction, or `SET` in a non-transactional file. Run non-transactional files on a dedicated direct PostgreSQL connection: all commands must share that session, and it must be closed after success or failure. This keeps settings from leaking through a transaction pool and ensures they apply to the DDL. `lock_timeout` applies to each lock acquisition separately. On a timeout, the migration fails cleanly: retry it later with backoff, a bounded number of times. Never raise the timeout to make it pass. Do not set either in `postgresql.conf`, because that affects all sessions.
 
-✅
 ```sql
 BEGIN;
 SET LOCAL lock_timeout = '3s';
@@ -33,33 +34,26 @@ SET LOCAL statement_timeout = '15s';
 ALTER TABLE orders ADD COLUMN customer_id bigint;
 COMMIT;
 ```
-❌
-```sql
-ALTER TABLE orders ADD COLUMN customer_id bigint;  -- may wait forever and stall all queries on orders
-```
 
 ### 2. Build and drop indexes concurrently
 
 Plain `CREATE INDEX` takes SHARE and blocks all writes for the whole build; plain `DROP INDEX` takes ACCESS EXCLUSIVE. The `CONCURRENTLY` forms allow reads and writes but cannot run inside a transaction block, accept one index per statement, and do not work for indexes on partitioned tables (drop) or with `CASCADE`.
 
-A failed concurrent build leaves an INVALID index that is ignored for reads but still slows writes and, if unique, still enforces uniqueness. After the step, check for it and drop it before retrying:
+A failed concurrent build can leave an INVALID index that is ignored for reads but still slows writes and, if unique, still enforces uniqueness. After the step, check the target index:
 
 ```sql
-SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;
-DROP INDEX CONCURRENTLY IF EXISTS orders_customer_id_idx;
+SELECT indexrelid::regclass FROM pg_index
+WHERE indexrelid = to_regclass('orders_customer_id_idx') AND NOT indisvalid;
 ```
 
-✅
+If that query returns the invalid target, drop it with `DROP INDEX CONCURRENTLY` on a direct connection before retrying. Preserve any valid existing index and verify its definition before deciding the migration is complete.
+
 ```sql
 -- no-transaction
+-- dedicated direct PostgreSQL connection; close on completion or error
 SET lock_timeout = '3s';
-CREATE INDEX CONCURRENTLY IF NOT EXISTS orders_customer_id_idx ON orders (customer_id);
-```
-❌
-```sql
-BEGIN;
-CREATE INDEX orders_customer_id_idx ON orders (customer_id);  -- blocks writes for the full build
-COMMIT;
+SET statement_timeout = '30min';
+CREATE INDEX CONCURRENTLY orders_customer_id_idx ON orders (customer_id);
 ```
 
 For a unique constraint or primary key, build the unique index concurrently, then attach it with `ADD CONSTRAINT ... UNIQUE USING INDEX` (or `PRIMARY KEY USING INDEX`), which is a short catalog change.
@@ -68,69 +62,63 @@ For a unique constraint or primary key, build the unique index concurrently, the
 
 `ADD FOREIGN KEY` takes SHARE ROW EXCLUSIVE on both tables and scans the referencing table. With `NOT VALID` the scan is skipped and new rows are checked at once. `VALIDATE CONSTRAINT` then scans under SHARE UPDATE EXCLUSIVE, which does not block reads or writes. Run it in a separate transaction.
 
-✅
 ```sql
 ALTER TABLE orders ADD CONSTRAINT orders_customer_fk
   FOREIGN KEY (customer_id) REFERENCES customers (id) NOT VALID;
--- next transaction or next migration
-ALTER TABLE orders VALIDATE CONSTRAINT orders_customer_fk;
 ```
-❌
+
+After the first transaction commits, validate in a separate migration:
+
 ```sql
-ALTER TABLE orders ADD CONSTRAINT orders_customer_fk
-  FOREIGN KEY (customer_id) REFERENCES customers (id);  -- full scan while writes are blocked
+ALTER TABLE orders VALIDATE CONSTRAINT orders_customer_fk;
 ```
 
 ### 4. Reach NOT NULL through a validated constraint
 
 `SET NOT NULL` scans the whole table under ACCESS EXCLUSIVE, unless a valid `CHECK` constraint already proves the column has no nulls. Add that check as `NOT VALID`, validate it, then `SET NOT NULL` (now catalog-only), then drop the check. On PostgreSQL 18 or later you may instead add `CONSTRAINT name NOT NULL col NOT VALID` and validate it. Backfill nulls first (rule 6).
 
-✅
 ```sql
 ALTER TABLE orders ADD CONSTRAINT orders_customer_id_nn
   CHECK (customer_id IS NOT NULL) NOT VALID;
--- separate transaction, so the scan does not run under the ADD's ACCESS EXCLUSIVE
+```
+
+After committing that change, validate in a separate transaction:
+
+```sql
 ALTER TABLE orders VALIDATE CONSTRAINT orders_customer_id_nn;
--- separate transaction
+```
+
+After validation commits, finish in another transaction:
+
+```sql
 ALTER TABLE orders ALTER COLUMN customer_id SET NOT NULL;
 ALTER TABLE orders DROP CONSTRAINT orders_customer_id_nn;
-```
-❌
-```sql
-ALTER TABLE orders ALTER COLUMN customer_id SET NOT NULL;  -- full scan under ACCESS EXCLUSIVE
 ```
 
 ### 5. Know which column changes rewrite the table
 
 Since PostgreSQL 11, `ADD COLUMN` with a non-volatile default (a constant, `now()`) only writes the catalog. A volatile default (`clock_timestamp()`, `random()`, `gen_random_uuid()`), a stored generated column, an identity column, or a domain with constraints rewrites the table and its indexes. `ALTER COLUMN TYPE` rewrites unless the old type is binary coercible to the new one and `USING` keeps values as they are: `varchar(n)` to `text` or to a larger `varchar` is free, `int` to `bigint` is a rewrite. For a rewrite on a large table, use expand and contract with a new column. More cases: [references/lock-levels.md](references/lock-levels.md).
 
-✅
 ```sql
 ALTER TABLE events ADD COLUMN source text NOT NULL DEFAULT 'web';
 ALTER TABLE users ALTER COLUMN fullname TYPE text;  -- from varchar(100): no rewrite
 ```
-❌
-```sql
-ALTER TABLE events ADD COLUMN token uuid NOT NULL DEFAULT gen_random_uuid();  -- rewrites the table
-ALTER TABLE events ALTER COLUMN id TYPE bigint;  -- rewrites the table and every index
-```
 
 ### 6. Backfill in bounded batches with a commit per batch
 
-One `UPDATE` over a large table holds row locks on every touched row until it commits, bloats the table and replicates as one burst. Update a bounded key range or a `LIMIT`ed set per transaction, commit, pause, repeat until no rows change. Run the backfill outside the schema migration transaction, and make it restartable.
+One `UPDATE` over a large table holds row locks on every touched row until it commits, bloats the table and replicates as one burst. Update a bounded key range or a `LIMIT`ed set per transaction, commit, pause, and repeat. After writers switch to the new column, verify that no eligible rows remain. Run the backfill outside the schema migration transaction, and make it restartable.
 
-✅
 ```sql
--- repeat, one transaction each, until 0 rows updated
-UPDATE orders SET customer_id = o.legacy_customer_id
-FROM (SELECT id, legacy_customer_id FROM orders
-      WHERE customer_id IS NULL ORDER BY id LIMIT 5000) o
-WHERE orders.id = o.id;
+-- repeat in separate transactions; recheck eligibility before stopping on 0 updated rows
+UPDATE orders AS target SET customer_id = target.legacy_customer_id
+FROM (SELECT id FROM orders
+      WHERE customer_id IS NULL AND legacy_customer_id IS NOT NULL
+      ORDER BY id LIMIT 5000) batch
+WHERE target.id = batch.id
+  AND target.customer_id IS NULL AND target.legacy_customer_id IS NOT NULL;
 ```
-❌
-```sql
-UPDATE orders SET customer_id = legacy_customer_id;  -- 80M rows in one transaction
-```
+
+Resolve rows whose source value is null before enforcing `NOT NULL`. Recheck for remaining eligible rows after concurrent writers have switched to the new column.
 
 ### 7. Rename and drop with expand, migrate, contract
 
@@ -142,17 +130,12 @@ Old and new application versions run together during a deploy, so each schema st
 
 `RENAME COLUMN` and `DROP COLUMN` are fast but break any running code that still uses the old name, so they belong only in the contract step.
 
-✅
 ```sql
 -- release N
 ALTER TABLE users ADD COLUMN display_name text;
 -- release N+1 writes both, backfill runs, release N+2 reads display_name
 -- release N+3
 ALTER TABLE users DROP COLUMN fullname;
-```
-❌
-```sql
-ALTER TABLE users RENAME COLUMN fullname TO display_name;  -- old pods fail until rollout ends
 ```
 
 ## Sources

@@ -11,6 +11,17 @@
           }
         ]
       }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh\" subagent",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }

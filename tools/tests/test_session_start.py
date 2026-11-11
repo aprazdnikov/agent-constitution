@@ -48,6 +48,28 @@ def test_cursor_output(hooks_dir: Path) -> None:
     assert json.loads(result.stdout) == {"additional_context": EXPECTED}
 
 
+def test_subagent_output_is_context_for_claude_and_codex(hooks_dir: Path) -> None:
+    result = _run(hooks_dir, "subagent")
+
+    assert result.returncode == 0
+    assert json.loads(result.stdout) == {
+        "hookSpecificOutput": {"hookEventName": "SubagentStart", "additionalContext": EXPECTED}
+    }
+
+
+def test_core_registers_subagent_context_hooks() -> None:
+    hooks = SCRIPT.parent
+    shared = json.loads((hooks / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+    cursor = json.loads((hooks / "cursor-hooks.json").read_text(encoding="utf-8"))["hooks"]
+
+    assert any(
+        "subagent" in handler["command"]
+        for group in shared["SubagentStart"]
+        for handler in group["hooks"]
+    )
+    assert "preToolUse" not in cursor
+
+
 def test_unknown_format_is_rejected(hooks_dir: Path) -> None:
     result = _run(hooks_dir, "vim")
 
