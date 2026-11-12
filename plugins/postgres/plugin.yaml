@@ -1,0 +1,3 @@
+name: ac-postgres
+version: "0.1.2"
+description: PostgreSQL migration and connection-pooling guidance for coding agents.

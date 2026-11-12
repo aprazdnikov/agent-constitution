@@ -1,6 +1,6 @@
 {
   "name": "postgres",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "PostgreSQL production safety for coding agents: lock-aware migrations and PgBouncer transaction-pooling constraints.",
   "skills": "./skills/"
 }

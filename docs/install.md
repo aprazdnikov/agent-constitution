@@ -20,6 +20,9 @@ git clone https://github.com/aprazdnikov/agent-constitution.git
 
 - [Claude Code](#claude-code)
 - [Codex](#codex)
+- [Qwen Code](#qwen-code)
+- [Hermes](#hermes)
+- [OpenCode](#opencode)
 - [Cursor](#cursor)
 - [Limitations](#limitations)
 
@@ -79,8 +82,9 @@ run `claude plugin list`
 2. Ask: "Which rules and skills are active in this session?"
 3. The answer should describe the Agent Constitution: its engineering principles and its skill-routing
    list, which sends edits to existing code to `modify-existing-code`, any programming task to
-   `security-gate`, and database work to `postgres-migrations` and `postgres-pgbouncer`. Without
-   `postgres`, the agent should say those two rows are unavailable.
+   `security-gate`, PostgreSQL migration files and live-database DDL to `postgres-migrations`, and
+   relevant connection-pooling work to `postgres-pgbouncer`. Without `postgres`, the agent should
+   say those two rows are unavailable.
 
 If the agent does not mention the constitution or its routing, the hook did not run. Typing `/` should
 still list the skills as `/core:modify-existing-code` and `/core:security-gate`, which tells you the
@@ -160,6 +164,91 @@ approval prompt.
 If the answer says nothing about the constitution, open `/hooks` and check whether the `core` hook is
 untrusted or modified.
 
+## Qwen Code
+
+Clone the Git repository, then install the native extensions from the business project's working directory:
+
+```bash
+qwen extensions install /path/to/agent-constitution/plugins/core --scope project
+qwen extensions install /path/to/agent-constitution/plugins/postgres --scope project
+qwen extensions list
+```
+
+The PostgreSQL extension is optional. Review the extension consent prompt. The `core` extension includes `SessionStart` and `SubagentStart` context hooks and routes to the Qwen namespaced skills; restarting the session activates changes. The installed Qwen version and its settings determine whether extensions and hooks run. With Qwen Code 0.27.0, local extension installation, skill discovery, session and subagent context, and skill loading were checked using a local model stub. In a non-interactive session the `skill` and `agent` tools can require explicit permission; narrowly allowed tools were used for those synthetic checks. Qwen's optional [execution sandbox](https://qwenlm.github.io/qwen-code-docs/en/users/features/sandbox/) disables executable extensions, hooks and the skill tool; use the local-file bundle below in that mode.
+
+### Qwen tool-execution sandbox
+
+The sandbox bundle is a reviewable set of local instruction files, not an executable extension. It lets the agent read the applicable `SKILL.md` and references with `read_file` without changing sandbox settings. Generate it in a **new** directory outside the source plugins:
+
+```bash
+cd /path/to/agent-constitution/tools
+uv run python -m ac_tools.qwen_sandbox \
+  --output /path/to/new-review-bundle \
+  --core ../plugins/core \
+  --plugin ../plugins/postgres
+```
+
+Omit the PostgreSQL `--plugin` argument and the preceding continuation character when it is not needed. To include Pro or approved project knowledge, repeat `--plugin` with `/path/to/agent-constitution-pro/plugins/codify` or `/path/to/knowledge-target/plugins/project`. Include project knowledge only for its own business project and keep the review bundle in an appropriately protected location. The tool rejects duplicate skill names, source symlinks and an existing output directory.
+
+Review the generated `QWEN.md` and `.agent-constitution/skills/`. In each intended project, merge the generated `QWEN.md` with any existing project instructions and copy the `.agent-constitution` directory only after checking for existing files and approving conflicts. Do not overwrite unrelated rules. Restart Qwen and verify that it reads the local paths. Synthetic Qwen 0.27.0 sessions in a Landlock sandbox loaded the generated context in the main session and a subagent, and read the security skill, `codify`, and a project reference using a local model stub. Model adherence and a full project initialization remain to be tested. The sandbox still limits writes to its admitted workspace, so choose a knowledge target compatible with that boundary. Do not disable the sandbox automatically.
+
+The bundle is a copy and does not update itself. After an approved plugin or knowledge update, generate a new bundle, review its differences and update the project's copies deliberately.
+
+When editing `plugins/core/hooks/constitution.md`, regenerate the Qwen hook payload and run the tests:
+
+```bash
+cd /path/to/agent-constitution/tools
+uv run python -m ac_tools.qwen_hooks ../plugins/core
+uv run pytest tests/test_agent_integrations.py
+```
+
+## Hermes
+
+Hermes uses its own plugin format and requires explicit enablement. Install from the Git repository and review the plugin before enabling it:
+
+```bash
+hermes plugins install aprazdnikov/agent-constitution/plugins/core --no-enable
+hermes plugins enable ac-core
+hermes plugins install aprazdnikov/agent-constitution/plugins/postgres --no-enable
+hermes plugins enable ac-postgres
+```
+
+The PostgreSQL plugin is optional. `ac-core` registers the constitution as a system-prompt section and exposes `ac-core:modify-existing-code` and `ac-core:security-gate`; the PostgreSQL skills use the `ac-postgres:` namespace. Plugin registration and main/subagent context delivery were checked with Hermes 0.22.5 and a local model stub. The synthetic check used `hermes -z`, which bypasses approval prompts, only with a temporary configuration and test data. Hermes may omit plugins in safe mode or when they are not enabled; behavior with real models still needs evaluation.
+
+For a local clone, copy each plugin directory to the corresponding `~/.hermes/plugins/ac-core` or `~/.hermes/plugins/ac-postgres` directory after checking that it does not already exist, then enable it. Git-installed plugins can be updated through `hermes plugins update`. Business-project knowledge must use a project-scoped installation as described in the Pro guide.
+
+## OpenCode
+
+OpenCode loads these standard skills and the constitution through its own project configuration. It does not install the Codex or Claude plugin package. Merge the following paths into the existing `opencode.json` of each intended project; do not overwrite unrelated configuration. Replace the absolute paths with the local Git clone. The PostgreSQL path is optional.
+
+For OpenCode 1:
+
+```json
+{
+  "instructions": ["/absolute/path/agent-constitution/plugins/core/hooks/constitution.md"],
+  "skills": {
+    "paths": [
+      "/absolute/path/agent-constitution/plugins/core/skills",
+      "/absolute/path/agent-constitution/plugins/postgres/skills"
+    ]
+  }
+}
+```
+
+For OpenCode 2, use the same `instructions` field and its current array form for skills:
+
+```json
+{
+  "instructions": ["/absolute/path/agent-constitution/plugins/core/hooks/constitution.md"],
+  "skills": [
+    "/absolute/path/agent-constitution/plugins/core/skills",
+    "/absolute/path/agent-constitution/plugins/postgres/skills"
+  ]
+}
+```
+
+OpenCode 1.19.5 resolved the configuration, discovered the core, PostgreSQL, Pro and synthetic project skills, and delivered the constitution to main and subagent requests in an isolated test with a local model stub. The synthetic run explicitly allowed its `task` tool. OpenCode 2 syntax follows its [official skill documentation](https://opencode.ai/docs/skills/), but has not been tested here. Verify the selected skills and instructions in a new session. Project-specific knowledge and the Pro skill can be added as additional local skill paths.
+
 ## Cursor
 
 Cursor reads `.cursor-plugin/marketplace.json` at the repository root. Cursor has no command for adding a
@@ -218,7 +307,7 @@ the constitution that routes to them.
 
 ### Subagent context
 
-The `core` plugin is designed to supply the constitution and skill routing when a subagent starts. In Claude Code and Codex, `SubagentStart` returns the same context as `SessionStart`; Codex requires the new hook to be trusted. Local synthetic runs verified context delivery through this event with Codex CLI 0.166.0 and Claude Code 2.1.296, using a local model stub. The coordinator also receives instructions to pass relevant confirmed project context and constraints to subagents and review their work. A project plugin's own knowledge is not automatically copied by the `core` hook.
+The `core` plugin is designed to supply the constitution and skill routing when a subagent starts. In Claude Code, Codex and Qwen, `SubagentStart` returns context to the child; Codex requires the hook to be trusted. Local synthetic runs verified context delivery with Codex CLI 0.166.0, Claude Code 2.1.296 and Qwen Code 0.27.0, using a local model stub. Hermes 0.22.5 received its plugin system-prompt section in the main and subagent requests in the same kind of synthetic test. OpenCode 1.19.5 also delivered the configured instructions to a synthetic subagent. The coordinator receives instructions to pass relevant confirmed project context and constraints to subagents and review their work. A project plugin's own knowledge is not automatically copied by the `core` hook.
 
 Cursor's `subagentStart` cannot inject context. `hooks/cursor-subagent.py` is an experimental `preToolUse` handler for `Task`; it prepends the constitution to the task prompt and requires Python 3. It is **not registered or enabled by default**. Multiple hooks may rewrite the same original task and one update can replace another, potentially losing a restriction or redaction supplied by another hook. Cursor's response schema and permission behavior also need end-to-end verification: an invalid permission-hook response can block `Task`, while a hook error may let a task proceed without the context. Test delivery and permission behavior in an isolated Cursor installation, including interactions with every other `Task` hook, before opting in. The coordinator is instructed to include relevant constraints in delegated tasks. Hooks do not replace permissions or sandbox restrictions.
 

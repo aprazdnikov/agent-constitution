@@ -1,0 +1,6 @@
+{
+  "name": "postgres",
+  "version": "0.1.2",
+  "description": "PostgreSQL production safety for coding agents.",
+  "skills": "skills"
+}
